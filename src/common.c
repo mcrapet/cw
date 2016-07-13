@@ -201,7 +201,7 @@ static inline int process_read (cw_context_t *ctx)
  *
  * \param[in] in_fd input fd to read (raw statistics data) from
  * \param[in] out_fd output fd to write (parsed results) to
- * \param[in] mode use any no zero number when using curl's progress bar (-#)
+ * \param[in] mode use any non zero number when using curl's progress bar (-#)
  * \return <0: for any error
  *          0: success (there's nothing left to read)
  *         >0: SIGCHLD signal received

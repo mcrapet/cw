@@ -26,14 +26,14 @@
 
 #include "common.h"
 
-//#define CW_NO_ZENITY   /* no 2nd fork */
+//#define CW_KEEP_ZENITY_ERRORS
 
 int main (int argc, char *argv[])
 {
   int ret, status = 0;
   pid_t pid[2];
   int apipe[2];
-  bool curl_hash_flag;
+  bool curl_hash_flag, zenity_fork;
 
   /* Check provided cURL command-line */
   const char *switches[5] = {
@@ -56,8 +56,8 @@ int main (int argc, char *argv[])
         break;
       }
 
-  if (status & 3)
-    CW_WARNING("curl silent flag detected, could not parse progress, please remove it");
+  /* curl silent flag detected, don't perform 2nd fork */
+  zenity_fork = !(status & 3);
 
   curl_hash_flag = status & 4;
 
@@ -93,22 +93,22 @@ int main (int argc, char *argv[])
   } else {
     int bpipe[2];
 
-    #ifndef CW_NO_ZENITY
-    if (pipe(bpipe) == -1) {
-      CW_ERROR_ERRNO(errno, "pipe");
-      exit(EXIT_FAILURE);
-    }
+    if (zenity_fork) {
+      if (pipe(bpipe) == -1) {
+        CW_ERROR_ERRNO(errno, "pipe");
+        exit(EXIT_FAILURE);
+      }
 
-    /* Second fork (zenity) */
-    pid[1] = fork();
-    if (pid[1] == (pid_t)-1) {
-      CW_ERROR_ERRNO(errno, "fork");
-      exit(EXIT_FAILURE);
+      /* Second fork (zenity) */
+      pid[1] = fork();
+      if (pid[1] == (pid_t)-1) {
+        CW_ERROR_ERRNO(errno, "fork");
+        exit(EXIT_FAILURE);
+      }
+    } else {
+      bpipe[1] = STDERR_FILENO;
+      pid[1] = (pid_t)-1;
     }
-    #else
-    bpipe[1] = STDERR_FILENO;
-    pid[1] = (pid_t)-1;
-    #endif
 
     if (pid[1] == 0) { /* child */
 
@@ -116,7 +116,16 @@ int main (int argc, char *argv[])
         CW_ERROR_ERRNO(errno, "dup2");
       } else {
         close(bpipe[1]);
-        close(STDOUT_FILENO); /* but don't close stderr in case of zenity errors */
+        close(STDOUT_FILENO);
+
+        /* Silent zenity errors. For example:
+         * Gtk-Message: GtkDialog mapped without a transient parent. This is discouraged.
+         */
+        #ifndef CW_KEEP_ZENITY_ERRORS
+        close(STDERR_FILENO);
+        #endif
+
+        /* but don't close stderr in case of zenity errors */
         if (execlp("zenity", "zenity", "--progress", "--no-cancel",
               "--auto-close", "--title", "cURL wrapper", NULL) == -1) {
           close(bpipe[0]);
@@ -132,7 +141,7 @@ int main (int argc, char *argv[])
       /* Blocking loop inside */
       ret = cw_filter_pselect(apipe[0], bpipe[1], curl_hash_flag);
 
-      if (ret > 0) { /* SIGCHLD */
+      if (ret > 0 && zenity_fork) { /* SIGCHLD */
         write(bpipe[1], "100\n", 4);
       }
 

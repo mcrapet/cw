@@ -34,7 +34,7 @@ typedef struct {
   int (*cw_parsing_func)(int fd, const char *str, size_t len);
 } cw_context_t;
 
-static volatile int exit_request = 0;
+volatile sig_atomic_t exit_request = 0;
 
 /* Signal handler. */
 static void signal_handler (int sig)

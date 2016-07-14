@@ -23,6 +23,26 @@
 #include <string.h>
 #include <errno.h>
 
+#ifdef HAVE_CONFIG_H
+#include "config.h"
+#endif
+
+#ifdef FORCE_IOWAIT
+#  if defined(HAVE_PPOLL) && (FORCE_IOWAIT == 0x504F4C4C)
+#  define HAVE_CW_PPOLL 1
+#  elif define(HAVE_PSELECT) && (FORCE_IOWAIT == 0x53454C45)
+#  define HAVE_CW_PSELECT 1
+#  else
+#  error "Unavailable implementation, FORCE_IOWAIT has unexpected value"
+#  endif
+#else
+#  if defined(HAVE_PPOLL)
+#  define HAVE_CW_PPOLL 1
+#  elif defined(HAVE_PSELECT)
+#  define HAVE_CW_PSELECT 1
+#  endif
+#endif
+
 #define CW_WARNING(fmt, ...) \
     fprintf(stderr, "warning: " fmt "\n", ## __VA_ARGS__)
 #define CW_ERROR(fmt, ...) \
@@ -31,6 +51,6 @@
     fprintf(stderr, "error: " fmt " (%s)\n", ## __VA_ARGS__, strerror(errno))
 
 /* Exported prototype */
-int cw_filter_pselect (int in_fd, int out_fd, int mode);
+int cw_filter (int in_fd, int out_fd, int mode);
 
 #endif /* COMMON_H */

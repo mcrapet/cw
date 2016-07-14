@@ -139,7 +139,7 @@ int main (int argc, char *argv[])
       pid_t w;
 
       /* Blocking loop inside */
-      ret = cw_filter_pselect(apipe[0], bpipe[1], curl_hash_flag);
+      ret = cw_filter(apipe[0], bpipe[1], curl_hash_flag);
 
       if (ret > 0 && zenity_fork) { /* SIGCHLD */
         write(bpipe[1], "100\n", 4);

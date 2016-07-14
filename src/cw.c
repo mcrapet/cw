@@ -24,6 +24,10 @@
 
 #include "common.h"
 
+#ifdef HAVE_CONFIG_H
+#include "config.h"
+#endif
+
 #define CW_NAME    "cw"
 #define CW_VERSION PACKAGE_VERSION
 
@@ -65,7 +69,7 @@ int main (int argc, char *argv[])
     fprintf(stderr, "%s: unwanted argument(s), ignoring them\n", CW_NAME);
 
   /* Blocking loop inside */
-  if (cw_filter_pselect(STDIN_FILENO, STDOUT_FILENO,
+  if (cw_filter(STDIN_FILENO, STDOUT_FILENO,
           curl_hash_flag) == 0)
     write(STDOUT_FILENO, "100\n", 4);
 

@@ -16,15 +16,22 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#define _GNU_SOURCE
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdbool.h>
 #include <string.h>
 #include <signal.h>
 #include <unistd.h>
-#include <sys/select.h>
 
-#include "common.h"
+#include "common.h"        /* HAVE_* defines */
+
+#ifdef HAVE_CW_PSELECT
+#include <sys/select.h>
+#endif
+#ifdef HAVE_CW_PPOLL
+#include <poll.h>
+#endif
 
 #define LINE_BUFFER_SIZE 128 /* cURL seems to have fixed it to 79, but let's be tolerant */
 
@@ -195,6 +202,90 @@ static inline int process_read (cw_context_t *ctx)
   return 0;
 }
 
+#ifdef HAVE_CW_PPOLL
+/**
+ * Read, parse data and write results.
+ * This is a blocking function using ppoll syscall.
+ *
+ * \param[in] in_fd input fd to read (raw statistics data) from
+ * \param[in] out_fd output fd to write (parsed results) to
+ * \param[in] mode use any non zero number when using curl's progress bar (-#)
+ * \return <0: for any error
+ *          0: success (there's nothing left to read)
+ *         >0: SIGCHLD signal received
+ */
+int cw_filter (int in_fd, int out_fd, int mode)
+{
+  struct pollfd readfds[1];
+  struct timespec timeout = {0};
+  int retval;
+  sigset_t mask, orig_mask;
+  struct sigaction act = {0};
+  cw_context_t ctx;
+
+  if (in_fd < 0 || out_fd < 0)
+    return -1;
+
+  ctx.in_fd = in_fd;
+  ctx.out_fd = out_fd;
+  ctx.cw_parsing_func = (mode) ? parse_curl_progress_bar :
+      parse_curl_progress_meter;
+
+  act.sa_handler = signal_handler;
+
+  if (sigaction(SIGINT, &act, 0)) {
+    CW_ERROR_ERRNO(errno, "sigaction");
+    return -2;
+  }
+
+  if (sigaction(SIGTERM, &act, 0)) {
+    CW_ERROR_ERRNO(errno, "sigaction");
+    return -3;
+  }
+
+  if (sigaction(SIGCHLD, &act, 0)) {
+    CW_ERROR_ERRNO(errno, "sigaction");
+    return -4;
+  }
+
+  sigemptyset(&mask);
+  sigaddset(&mask, SIGINT);
+  sigaddset(&mask, SIGTERM);
+  sigaddset(&mask, SIGCHLD);
+
+  if (sigprocmask(SIG_BLOCK, &mask, &orig_mask) < 0) {
+    CW_ERROR_ERRNO(errno, "sigprocmask");
+    return -5;
+  }
+
+  timeout.tv_sec = 50;
+
+  readfds[0].fd = ctx.in_fd;
+  readfds[0].events = POLLIN;
+
+  while (!exit_request) {
+    retval = ppoll(&readfds[0], sizeof(readfds)/sizeof(struct pollfd),
+        &timeout, &orig_mask);
+    if (retval < 0) {
+      if (errno != EINTR) {
+        CW_ERROR_ERRNO(errno, "ppoll");
+        return -6;
+      }
+      break;
+
+    } else if (retval == 0) { /* timeout */
+      continue;
+
+    } else if ((retval == 1 && readfds[0].revents & POLLIN) && \
+        process_read(&ctx) < 0) {
+      break;
+    }
+  }
+
+  return exit_request;
+}
+#else
+#ifdef HAVE_CW_PSELECT
 /**
  * Read, parse data and write results.
  * This is a blocking function using pselect syscall.
@@ -206,7 +297,7 @@ static inline int process_read (cw_context_t *ctx)
  *          0: success (there's nothing left to read)
  *         >0: SIGCHLD signal received
  */
-int cw_filter_pselect (int in_fd, int out_fd, int mode)
+int cw_filter (int in_fd, int out_fd, int mode)
 {
   fd_set readfds;
   struct timespec timeout = {0};
@@ -276,5 +367,7 @@ int cw_filter_pselect (int in_fd, int out_fd, int mode)
 
   return exit_request;
 }
+#endif /* HAVE_CW_PSELECT */
+#endif /* HAVE_CW_PPOLL */
 
 /* vim: set et sw=2 ts=4: */

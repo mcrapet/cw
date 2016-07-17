@@ -277,6 +277,9 @@ int cw_filter (int in_fd, int out_fd, int mode)
     } else if (retval == 0) { /* timeout */
       continue;
 
+    } else if (retval == 1 && readfds[0].revents & POLLHUP) {
+      break;
+
     } else if ((retval == 1 && readfds[0].revents & POLLIN) && \
         process_read(&ctx) < 0) {
       break;

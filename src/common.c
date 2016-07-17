@@ -232,18 +232,19 @@ int cw_filter (int in_fd, int out_fd, int mode)
       parse_curl_progress_meter;
 
   act.sa_handler = signal_handler;
+  sigemptyset(&act.sa_mask); // signals to be blocked while the handler runs
 
-  if (sigaction(SIGINT, &act, 0)) {
+  if (sigaction(SIGINT, &act, NULL)) {
     CW_ERROR_ERRNO(errno, "sigaction");
     return -2;
   }
 
-  if (sigaction(SIGTERM, &act, 0)) {
+  if (sigaction(SIGTERM, &act, NULL)) {
     CW_ERROR_ERRNO(errno, "sigaction");
     return -3;
   }
 
-  if (sigaction(SIGCHLD, &act, 0)) {
+  if (sigaction(SIGCHLD, &act, NULL)) {
     CW_ERROR_ERRNO(errno, "sigaction");
     return -4;
   }
@@ -315,18 +316,19 @@ int cw_filter (int in_fd, int out_fd, int mode)
       parse_curl_progress_meter;
 
   act.sa_handler = signal_handler;
+  sigemptyset(&act.sa_mask);
 
-  if (sigaction(SIGINT, &act, 0)) {
+  if (sigaction(SIGINT, &act, NULL)) {
     CW_ERROR_ERRNO(errno, "sigaction");
     return -2;
   }
 
-  if (sigaction(SIGTERM, &act, 0)) {
+  if (sigaction(SIGTERM, &act, NULL)) {
     CW_ERROR_ERRNO(errno, "sigaction");
     return -3;
   }
 
-  if (sigaction(SIGCHLD, &act, 0)) {
+  if (sigaction(SIGCHLD, &act, NULL)) {
     CW_ERROR_ERRNO(errno, "sigaction");
     return -4;
   }

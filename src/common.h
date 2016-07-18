@@ -30,7 +30,7 @@
 #ifdef FORCE_IOWAIT
 #  if defined(HAVE_PPOLL) && (FORCE_IOWAIT == 0x504F4C4C)
 #  define HAVE_CW_PPOLL 1
-#  elif define(HAVE_PSELECT) && (FORCE_IOWAIT == 0x53454C45)
+#  elif defined(HAVE_PSELECT) && (FORCE_IOWAIT == 0x53454C45)
 #  define HAVE_CW_PSELECT 1
 #  else
 #  error "Unavailable implementation, FORCE_IOWAIT has unexpected value"

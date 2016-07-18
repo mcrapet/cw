@@ -34,6 +34,7 @@
 #endif
 
 #define LINE_BUFFER_SIZE 128 /* cURL seems to have fixed it to 79, but let's be tolerant */
+#define WAIT_TIME_SECS    50 /* pselect/ppoll (in seconds) */
 
 typedef struct {
   int in_fd;
@@ -220,35 +221,13 @@ int cw_filter (int in_fd, int out_fd, int mode)
   struct timespec timeout = {0};
   int retval;
   sigset_t mask, orig_mask;
-  struct sigaction act = {0};
+  struct sigaction sa;
   cw_context_t ctx;
 
   if (in_fd < 0 || out_fd < 0)
     return -1;
 
-  ctx.in_fd = in_fd;
-  ctx.out_fd = out_fd;
-  ctx.cw_parsing_func = (mode) ? parse_curl_progress_bar :
-      parse_curl_progress_meter;
-
-  act.sa_handler = signal_handler;
-  sigemptyset(&act.sa_mask); // signals to be blocked while the handler runs
-
-  if (sigaction(SIGINT, &act, NULL)) {
-    CW_ERROR_ERRNO(errno, "sigaction");
-    return -2;
-  }
-
-  if (sigaction(SIGTERM, &act, NULL)) {
-    CW_ERROR_ERRNO(errno, "sigaction");
-    return -3;
-  }
-
-  if (sigaction(SIGCHLD, &act, NULL)) {
-    CW_ERROR_ERRNO(errno, "sigaction");
-    return -4;
-  }
-
+  /* Block the 3 signals until ppoll call */
   sigemptyset(&mask);
   sigaddset(&mask, SIGINT);
   sigaddset(&mask, SIGTERM);
@@ -256,10 +235,34 @@ int cw_filter (int in_fd, int out_fd, int mode)
 
   if (sigprocmask(SIG_BLOCK, &mask, &orig_mask) < 0) {
     CW_ERROR_ERRNO(errno, "sigprocmask");
+    return -2;
+  }
+
+  ctx.in_fd = in_fd;
+  ctx.out_fd = out_fd;
+  ctx.cw_parsing_func = (mode) ? parse_curl_progress_bar :
+      parse_curl_progress_meter;
+
+  sa.sa_handler = signal_handler;
+  sa.sa_flags = 0;
+  sigemptyset(&sa.sa_mask); // signals to be blocked while the handler runs
+
+  if (sigaction(SIGINT, &sa, NULL)) {
+    CW_ERROR_ERRNO(errno, "sigaction");
+    return -3;
+  }
+
+  if (sigaction(SIGTERM, &sa, NULL)) {
+    CW_ERROR_ERRNO(errno, "sigaction");
+    return -4;
+  }
+
+  if (sigaction(SIGCHLD, &sa, NULL)) {
+    CW_ERROR_ERRNO(errno, "sigaction");
     return -5;
   }
 
-  timeout.tv_sec = 50;
+  timeout.tv_sec = WAIT_TIME_SECS;
 
   readfds[0].fd = ctx.in_fd;
   readfds[0].events = POLLIN;
@@ -307,35 +310,13 @@ int cw_filter (int in_fd, int out_fd, int mode)
   struct timespec timeout = {0};
   int maxfd, retval;
   sigset_t mask, orig_mask;
-  struct sigaction act = {0};
+  struct sigaction sa;
   cw_context_t ctx;
 
   if (in_fd < 0 || out_fd < 0)
     return -1;
 
-  ctx.in_fd = in_fd;
-  ctx.out_fd = out_fd;
-  ctx.cw_parsing_func = (mode) ? parse_curl_progress_bar :
-      parse_curl_progress_meter;
-
-  act.sa_handler = signal_handler;
-  sigemptyset(&act.sa_mask);
-
-  if (sigaction(SIGINT, &act, NULL)) {
-    CW_ERROR_ERRNO(errno, "sigaction");
-    return -2;
-  }
-
-  if (sigaction(SIGTERM, &act, NULL)) {
-    CW_ERROR_ERRNO(errno, "sigaction");
-    return -3;
-  }
-
-  if (sigaction(SIGCHLD, &act, NULL)) {
-    CW_ERROR_ERRNO(errno, "sigaction");
-    return -4;
-  }
-
+  /* Block the 3 signals until pselect call */
   sigemptyset(&mask);
   sigaddset(&mask, SIGINT);
   sigaddset(&mask, SIGTERM);
@@ -343,10 +324,34 @@ int cw_filter (int in_fd, int out_fd, int mode)
 
   if (sigprocmask(SIG_BLOCK, &mask, &orig_mask) < 0) {
     CW_ERROR_ERRNO(errno, "sigprocmask");
+    return -2;
+  }
+
+  ctx.in_fd = in_fd;
+  ctx.out_fd = out_fd;
+  ctx.cw_parsing_func = (mode) ? parse_curl_progress_bar :
+      parse_curl_progress_meter;
+
+  sa.sa_handler = signal_handler;
+  sa.sa_flags = 0;
+  sigemptyset(&sa.sa_mask);
+
+  if (sigaction(SIGINT, &sa, NULL)) {
+    CW_ERROR_ERRNO(errno, "sigaction");
+    return -3;
+  }
+
+  if (sigaction(SIGTERM, &sa, NULL)) {
+    CW_ERROR_ERRNO(errno, "sigaction");
+    return -4;
+  }
+
+  if (sigaction(SIGCHLD, &sa, NULL)) {
+    CW_ERROR_ERRNO(errno, "sigaction");
     return -5;
   }
 
-  timeout.tv_sec = 50;
+  timeout.tv_sec = WAIT_TIME_SECS;
 
   while (!exit_request) {
     FD_ZERO(&readfds);

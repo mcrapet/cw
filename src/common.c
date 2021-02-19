@@ -32,6 +32,9 @@
 #ifdef HAVE_CW_PPOLL
 #include <poll.h>
 #endif
+#ifdef HAVE_CW_EPOLL
+#include <sys/epoll.h>
+#endif
 
 #define LINE_BUFFER_SIZE 128 /* cURL seems to have fixed it to 79, but let's be tolerant */
 #define WAIT_TIME_SECS    50 /* pselect/ppoll (in seconds) */
@@ -203,10 +206,105 @@ static inline int process_read (cw_context_t *ctx)
   return 0;
 }
 
+#ifdef HAVE_CW_EPOLL
+/**
+ * Read, parse data and write results.
+ * This is a blocking function using epoll (Linux) syscall.
+ *
+ * \param[in] in_fd input fd to read (raw statistics data) from
+ * \param[in] out_fd output fd to write (parsed results) to
+ * \param[in] mode use any non zero number when using curl's progress bar (-#)
+ * \return <0: for any error
+ *          0: success (there's nothing left to read)
+ *         >0: SIGCHLD signal received
+ */
+int cw_filter (int in_fd, int out_fd, int mode)
+{
+  struct epoll_event ev, events[1];
+  int epollfd, n, i, timeout;
+  sigset_t mask, orig_mask;
+  struct sigaction sa;
+  cw_context_t ctx;
+
+  if (in_fd < 0 || out_fd < 0)
+    return -1;
+
+  epollfd = epoll_create(1);
+  if (epollfd == -1) {
+    CW_ERROR_ERRNO(errno, "epoll_create");
+    return -2;
+  }
+
+  /* Block the 3 signals until ppoll call */
+  sigemptyset(&mask);
+  sigaddset(&mask, SIGINT);
+  sigaddset(&mask, SIGTERM);
+  sigaddset(&mask, SIGCHLD);
+
+  if (sigprocmask(SIG_BLOCK, &mask, &orig_mask) < 0) {
+    CW_ERROR_ERRNO(errno, "sigprocmask");
+    return -3;
+  }
+
+  ctx.in_fd = in_fd;
+  ctx.out_fd = out_fd;
+  ctx.cw_parsing_func = (mode) ? parse_curl_progress_bar :
+      parse_curl_progress_meter;
+
+  sa.sa_handler = signal_handler;
+  sa.sa_flags = 0;
+  sigemptyset(&sa.sa_mask); // signals to be blocked while the handler runs
+
+  if (sigaction(SIGINT, &sa, NULL)) {
+    CW_ERROR_ERRNO(errno, "sigaction");
+    return -4;
+  }
+
+  if (sigaction(SIGTERM, &sa, NULL)) {
+    CW_ERROR_ERRNO(errno, "sigaction");
+    return -5;
+  }
+
+  if (sigaction(SIGCHLD, &sa, NULL)) {
+    CW_ERROR_ERRNO(errno, "sigaction");
+    return -6;
+  }
+
+  timeout = WAIT_TIME_SECS * 1000; /* milliseconds */
+
+  ev.events = EPOLLIN;
+  ev.data.fd = ctx.in_fd;
+  if (epoll_ctl(epollfd, EPOLL_CTL_ADD, ctx.in_fd, &ev) == -1) {
+    CW_ERROR_ERRNO(errno, "epoll_ctl");
+    close(epollfd);
+    return -7;
+  }
+
+  while (!exit_request) {
+    n = epoll_pwait(epollfd, &events[0], sizeof(events)/sizeof(struct epoll_event),
+        timeout, &orig_mask);
+    if (n == -1 || n > 1) {
+      printf("n=%d", n);
+      CW_ERROR_ERRNO(errno, "epoll_pwait");
+      return -8;
+    }
+    i = 0;
+    if ((events[i].events & EPOLLIN) && (ctx.in_fd == events[i].data.fd) && \
+      process_read(&ctx) < 0) {
+      break;
+    } else if (events[i].events & (EPOLLERR | EPOLLHUP)) {
+      break;
+    }
+  }
+
+  close(epollfd);
+  return exit_request;
+}
+#else
 #ifdef HAVE_CW_PPOLL
 /**
  * Read, parse data and write results.
- * This is a blocking function using ppoll syscall.
+ * This is a blocking function using ppoll (Linux) syscall.
  *
  * \param[in] in_fd input fd to read (raw statistics data) from
  * \param[in] out_fd output fd to write (parsed results) to
@@ -379,5 +477,6 @@ int cw_filter (int in_fd, int out_fd, int mode)
 }
 #endif /* HAVE_CW_PSELECT */
 #endif /* HAVE_CW_PPOLL */
+#endif /* HAVE_CW_EPOLL */
 
 /* vim: set et sw=2 ts=4: */

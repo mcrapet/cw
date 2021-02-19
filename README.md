@@ -46,6 +46,14 @@ $ curl http://www.foo1234.com/20MiB.tar -O -J 2>&1 | cw
 100
 ```
 
+Compilation
+-----------
+
+To build, run  `./autogen.sh && ./configure && make`.
+
+There is a specific switch for chosing async event wait: `--with-iowait`.
+`select`, `ppoll` or `epoll` can be selected. Default is autodetect.
+
 License
 -------
 

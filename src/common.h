@@ -28,7 +28,9 @@
 #endif
 
 #ifdef FORCE_IOWAIT
-#  if defined(HAVE_PPOLL) && (FORCE_IOWAIT == 0x504F4C4C)
+#  if defined(HAVE_EPOLL_CTL) && (FORCE_IOWAIT == 0x45504F4C)
+#  define HAVE_CW_EPOLL 1
+#  elif defined(HAVE_PPOLL) && (FORCE_IOWAIT == 0x504F4C4C)
 #  define HAVE_CW_PPOLL 1
 #  elif defined(HAVE_PSELECT) && (FORCE_IOWAIT == 0x53454C45)
 #  define HAVE_CW_PSELECT 1
@@ -36,7 +38,9 @@
 #  error "Unavailable implementation, FORCE_IOWAIT has unexpected value"
 #  endif
 #else
-#  if defined(HAVE_PPOLL)
+#  if defined(HAVE_EPOLL_CTL)
+#  define HAVE_CW_EPOLL 1
+#  elif defined(HAVE_PPOLL)
 #  define HAVE_CW_PPOLL 1
 #  elif defined(HAVE_PSELECT)
 #  define HAVE_CW_PSELECT 1
